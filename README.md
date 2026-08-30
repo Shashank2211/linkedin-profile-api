@@ -11,11 +11,11 @@ Built for the Tross engineering hiring challenge. Java 21 / Spring Boot 3.3.
 ## Try it
 
 ```bash
-curl -s "https://<your-deployment>/api/v1/profiles?url=https://www.linkedin.com/in/williamhgates" \
+curl -s "https://linkedin-profile-api-xli4.onrender.com/api/v1/profiles?url=https://www.linkedin.com/in/williamhgates" \
      -H "X-API-Key: $API_KEY" | jq
 ```
 
-Interactive docs (OpenAPI 3.1 + Swagger UI): **`https://<your-deployment>/docs`**
+Interactive docs (OpenAPI 3.1 + Swagger UI): **`https://linkedin-profile-api-xli4.onrender.com/docs`**
 
 A Postman collection is at [`docs/postman_collection.json`](docs/postman_collection.json) —
 import it, set `baseUrl` and `apiKey`, and run the folder top to bottom. It walks a fresh
@@ -396,7 +396,7 @@ requirements checklist are in
 so the first real request is served from memory rather than discovering a throttled session:
 
 ```powershell
-.\scripts\warm-cache.ps1 -BaseUrl "https://<your-app>.onrender.com" -ApiKey "<your key>"
+.\scripts\warm-cache.ps1 -BaseUrl "https://linkedin-profile-api-xli4.onrender.com" -ApiKey "<your key>"
 ```
 
 ### Observability
