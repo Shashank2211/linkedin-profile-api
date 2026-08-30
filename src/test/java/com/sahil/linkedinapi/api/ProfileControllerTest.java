@@ -177,4 +177,17 @@ class ProfileControllerTest {
         mvc.perform(delete("/api/v1/profiles/ada-lovelace/cache"))
                 .andExpect(status().isNoContent());
     }
+
+    @Test
+    @DisplayName("405 with an Allow header when the method is wrong, not 500")
+    void wrongMethodReturns405() throws Exception {
+        // The eviction endpoint takes DELETE only. Before this was handled, a GET fell
+        // through to the catch-all advice and answered 500 - telling the caller to retry
+        // something that cannot ever succeed, and blaming the service for a client mistake.
+        mvc.perform(get("/api/v1/profiles/ada-lovelace/cache"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("DELETE")))
+                .andExpect(jsonPath("$.error.code").value("METHOD_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.error.requestId").exists());
+    }
 }

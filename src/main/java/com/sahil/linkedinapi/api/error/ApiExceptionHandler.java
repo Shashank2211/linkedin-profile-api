@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -45,6 +46,31 @@ public class ApiExceptionHandler {
         var code = ErrorCode.PROFILE_NOT_FOUND;
         return ResponseEntity.status(code.status())
                 .body(ErrorResponse.of(code, "No such endpoint: " + ex.getRequestURL(), requestId()));
+    }
+
+    /**
+     * A wrong method is a client mistake, not a server fault.
+     *
+     * <p>Without this, {@code GET /api/v1/profiles/{id}/cache} - an endpoint that only
+     * accepts DELETE - falls through to the catch-all below and answers 500, which tells the
+     * caller to retry something that can never work. It also reports a defect in this service
+     * for what is a defect in the request.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleWrongMethod(HttpRequestMethodNotSupportedException ex) {
+        var code = ErrorCode.METHOD_NOT_ALLOWED;
+        String supported = ex.getSupportedHttpMethods() == null ? ""
+                : ex.getSupportedHttpMethods().stream().map(Object::toString)
+                        .collect(java.util.stream.Collectors.joining(", "));
+        var body = ErrorResponse.of(code,
+                supported.isBlank()
+                        ? "Method " + ex.getMethod() + " is not supported by this endpoint."
+                        : "Method " + ex.getMethod() + " is not supported by this endpoint. Use: " + supported + ".",
+                requestId());
+        // RFC 9110 requires Allow on a 405, and it is what lets a client correct itself.
+        return supported.isBlank()
+                ? ResponseEntity.status(code.status()).body(body)
+                : ResponseEntity.status(code.status()).header("Allow", supported).body(body);
     }
 
     @ExceptionHandler(Exception.class)

@@ -152,6 +152,7 @@ Every failure returns the same body: `{ "error": { "code", "message", "requestId
 |--------|------|---------|
 | 400 | `INVALID_PROFILE_URL` | Not a parseable member profile URL — includes company, school and feed URLs |
 | 401 | `UNAUTHORIZED` | Missing or invalid API key |
+| 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the path. Always with `Allow` |
 | 404 | `PROFILE_NOT_FOUND` | The identifier resolves to no member |
 | 422 | `PROFILE_NOT_ACCESSIBLE` | The member exists but is private, or every source hit an auth wall |
 | 429 | `RATE_LIMITED` | Caller exceeded their bucket. Always with `Retry-After` |
