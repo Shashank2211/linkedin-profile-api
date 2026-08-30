@@ -12,11 +12,42 @@ mapper is already tested; the mapper itself is only as correct as the fixtures b
 
 ## 1. Capture
 
-1. Log in to LinkedIn in a browser you don't mind treating as disposable.
-2. Open DevTools → **Network**. Filter the request list on `voyager`.
-3. Load a profile and watch for a request to
-   `identity/dash/profiles?q=memberIdentity&…`. That is the one.
-4. Right-click it → **Copy → Copy response**, and paste into a scratch file.
+> **Do not copy the response out of DevTools.** That was the original advice here and it is
+> wrong now. The LinkedIn web app has moved to `/voyager/api/graphql`, while `VoyagerClient`
+> still calls the REST-li endpoint `/voyager/api/identity/dash/profiles` with a
+> `decorationId`. Copying from the Network tab therefore captures a request this service
+> never makes, and pins the mappers to the wrong shape.
+>
+> Two specific traps, both hit in practice:
+>
+> - The profile page fires **several** calls against `identityDashProfilesByMemberIdentity`.
+>   One of them is a cache-validation call whose projection is only `entityUrn` and
+>   `versionTag` — a couple of KB that look like a real capture in a file listing and
+>   contain no profile data at all.
+> - GraphQL responses nest the collection at `data.data.<queryName>."*elements"` rather than
+>   `data."*elements"`. `UrnGraph` understands both, but the entity shapes inside differ.
+
+Replay the request the service itself makes:
+
+```powershell
+.\scripts\capture-voyager.ps1 -Slug "https://www.linkedin.com/in/<someone>"
+```
+
+It reads the cookies from `.env`, builds the same URL and headers as `VoyagerClient`,
+refuses to follow redirects, and writes the raw response to `fixtures/raw/<slug>.json`. Add
+`-DryRun` to see the identifier, URL and output path without spending a request, and
+`-CheckSession` to test the cookie against `/voyager/api/me` on its own.
+
+It also reads the failures for you: a 302 whose `Location` is `/authwall` is a rejected
+cookie, a `Set-Cookie` that expires `li_at` in 1970 is LinkedIn deleting your session token,
+and a 302 back to the *same* URL is the datacenter handshake, which it completes with exactly
+one retry.
+
+Then confirm the capture is worth keeping before spending a redaction cycle on it:
+
+```powershell
+.\scripts\check-capture.ps1 src\test\resources\fixtures\raw\*.json
+```
 
 Capture **three** profiles, because they will not look the same:
 
@@ -29,9 +60,11 @@ Capture **three** profiles, because they will not look the same:
 That third one is the point of `meta.completeness`, and having it as a fixture is what stops
 you from over-promising in the README.
 
-While you're in the Network tab, note the exact `decorationId` in the request URL. If it is
-not `…FullProfileWithEntities-93`, put the real value in `VOYAGER_DECORATION_ID` — no
-rebuild needed.
+**On the `decorationId`.** The default is `…FullProfileWithEntities-93`, and because the
+browser no longer calls this endpoint there is no longer a request in the Network tab to read
+the current value from. If captures come back 400 or 404 while the session is demonstrably
+alive (`-CheckSession` returns 200), a retired decoration is the first suspect — try a
+neighbouring version via `VOYAGER_DECORATION_ID`, which needs no rebuild.
 
 **Do not commit the scratch files.** `*.har` and `src/test/resources/fixtures/raw/` are both
 gitignored; put raw captures in `fixtures/raw/` and they cannot be committed by accident.

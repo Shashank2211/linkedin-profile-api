@@ -342,6 +342,15 @@ genuine payload is the highest-value work left, and
 to copy out of DevTools, which three profiles to capture and why they differ, and which field
 paths are guesses worth verifying first.
 
+Three tools support that loop. `scripts/capture-voyager.ps1` replays the exact request
+`VoyagerClient` makes — rather than copying from DevTools, which now captures a *different*
+request, since the web app has moved to `/voyager/api/graphql` while this service still calls
+the REST-li endpoint. `scripts/check-capture.ps1` then verdicts a raw capture before you
+spend a redaction cycle on it, and `RealFixtureMappingReportTest` maps any `voyager-real*.json`
+and prints which field paths resolved, and for the ones that did not, how far each path got
+and which keys were actually present where it stopped. That test skips when no real fixture
+is committed, so a clean clone still goes green.
+
 A redaction tool is included — single file, JDK only, no build step:
 
 ```bash
