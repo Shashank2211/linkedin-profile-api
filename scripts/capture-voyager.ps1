@@ -254,33 +254,51 @@ $result = Invoke-VoyagerRequest -Uri $uri -Cookies $webSession.Cookies -Headers 
 # the edge saying "retry, now that you know where you belong". A browser completes it without
 # the user ever seeing it. Retried EXACTLY ONCE, and only when the target is the same url, so
 # this can never become a redirect loop against LinkedIn.
-if ($result.Status -in 301, 302, 303, 307, 308 -and $result.Location) {
-    $sameTarget = ($result.Location.TrimEnd('/') -eq $uri.TrimEnd('/'))
-    if ($sameTarget) {
-        Write-Host "302 to the same url - completing the datacenter handshake (one retry)." -ForegroundColor DarkGray
-        # A Set-Cookie that expires li_at in 1970 is LinkedIn deleting the token we just
-        # sent. That is a rejected session stated as plainly as the protocol allows, and it
-        # is worth catching here rather than letting it read as an odd redirect.
-        if ($result.SetCookie -match 'li_at=;|li_at=""|li_at=[^;]*;\s*Expires=\s*(Thu,\s*)?01[- ]Jan[- ]1970') {
-            Write-Host ""
-            Write-Host "LinkedIn EXPIRED the li_at cookie we sent (Set-Cookie: li_at=...1970)." -ForegroundColor Red
-            Write-Host "That is a rejected session token, not a routing problem." -ForegroundColor Red
-            Write-Host ""
-            Write-Host "Fix: log in to LinkedIn in the browser (a full login, not just opening a tab)," -ForegroundColor Yellow
-            Write-Host "then re-copy BOTH cookies into .env. li_at rotates on every login, and the" -ForegroundColor Yellow
-            Write-Host "csrf-token must come from the SAME session as li_at - copy them together." -ForegroundColor Yellow
-            Write-Host ""
-            exit 1
-        }
-        if ($result.SetCookie) {
-            $names = ($result.SetCookie -split ',(?=\s*[A-Za-z_]+=)' |
-                      ForEach-Object { ($_ -split '=')[0].Trim() }) |
-                     Where-Object { $_ } | Select-Object -Unique
-            Write-Host ("  cookies set by the edge: {0}" -f ($names -join ", ")) -ForegroundColor DarkGray
-        }
-        $result = Invoke-VoyagerRequest -Uri $uri -Cookies $webSession.Cookies -Headers $headers `
-                                        -UserAgent $userAgent -Referer $referer
+# LinkedIn's datacenter handshake.
+#
+# The edge answers with 302 back to the SAME url plus a Set-Cookie, meaning "retry, now that
+# you carry these". A browser completes this without the user seeing it. The shared
+# CookieContainer stores what comes back, so each round carries strictly more than the last.
+#
+# Bounded to three rounds and only ever to the SAME url, so this can never become a redirect
+# loop against LinkedIn. Anything still redirecting after three rounds is not a handshake.
+$handshakeRounds = 0
+while ($result.Status -in 301, 302, 303, 307, 308 -and
+       $result.Location -and
+       $result.Location.TrimEnd('/') -eq $uri.TrimEnd('/') -and
+       $handshakeRounds -lt 3) {
+
+    $handshakeRounds++
+
+    # A Set-Cookie that expires li_at in 1970 is LinkedIn deleting the token we just sent -
+    # a rejected session stated as plainly as the protocol allows.
+    # LinkedIn deletes a rejected token by sending it back with the literal value
+    # "delete me" and a 1970 expiry. A single regex is the wrong tool here: cookie dates
+    # contain commas ("Expires=Thu, 01-Jan-1970"), so any comma-bounded pattern silently
+    # fails to match the very thing it was written for.
+    $liAtRejected = ($result.SetCookie -match 'li_at=\s*delete me') -or
+                    (($result.SetCookie -match 'li_at=') -and ($result.SetCookie -match 'Max-Age=0'))
+    if ($liAtRejected) {
+        Write-Host ""
+        Write-Host "LinkedIn EXPIRED the li_at cookie we sent (Set-Cookie: li_at=...1970)." -ForegroundColor Red
+        Write-Host "That is a rejected session token, not a routing problem." -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Fix: log in to LinkedIn in the browser (a full login, not just opening a tab)," -ForegroundColor Yellow
+        Write-Host "then re-copy BOTH cookies into .env - li_at rotates on every login, and the" -ForegroundColor Yellow
+        Write-Host "csrf-token must come from the SAME session as li_at." -ForegroundColor Yellow
+        Write-Host ""
+        exit 1
     }
+
+    Write-Host ("  handshake round {0}: 302 to the same url, retrying with what the edge set" -f $handshakeRounds) -ForegroundColor DarkGray
+    if ($result.SetCookie) {
+        Write-Host ("    Set-Cookie: {0}" -f $result.SetCookie) -ForegroundColor DarkGray
+    }
+    Write-Host ("    cookie jar now holds: {0}" -f
+        (($webSession.Cookies.GetCookies($uri) | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor DarkGray
+
+    $result = Invoke-VoyagerRequest -Uri $uri -Cookies $webSession.Cookies -Headers $headers `
+                                    -UserAgent $userAgent -Referer $referer
 }
 
 $status = $result.Status
