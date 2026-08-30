@@ -1,0 +1,88 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    whitelabel:
+      enabled: false
+
+spring:
+  application:
+    name: linkedin-profile-api
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: false
+  jackson:
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /docs
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    com.sahil.linkedinapi: INFO
+
+linkedin-api:
+  # Comma-separated. Empty => auth disabled (dev only).
+  api-keys: ${API_KEYS:}
+  request-budget: PT12S
+
+  rate-limit:
+    requests-per-minute: ${RATE_LIMIT_RPM:30}
+    burst: 10
+
+  cache:
+    fresh-ttl: ${CACHE_FRESH_TTL:PT6H}
+    stale-ttl: ${CACHE_STALE_TTL:PT24H}
+    max-entries: 5000
+
+  breaker:
+    failure-threshold: 3
+    open-duration: PT2M
+
+  session:
+    li-at: ${LINKEDIN_LI_AT:}
+    jsessionid: ${LINKEDIN_JSESSIONID:}
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    accept-language: "en-US,en;q=0.9"
+    cooldown: PT15M
+    max-consecutive-failures: 3
+
+  http:
+    proxy: ${OUTBOUND_PROXY:}
+    connect-timeout: PT5S
+
+  sources:
+    voyager:
+      enabled: true
+      base-url: https://www.linkedin.com
+      decoration-id: ${VOYAGER_DECORATION_ID:com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-93}
+      timeout: PT10S
+      min-interval: PT6S
+      jitter: PT3S
+    public-html:
+      enabled: true
+      base-url: https://www.linkedin.com
+      timeout: PT10S
+      min-interval: PT4S
+      jitter: PT2S

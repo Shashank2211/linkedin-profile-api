@@ -1,0 +1,28 @@
+target/
+build/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Secrets — never commit
+.env
+.env.local
+*.env
+!.env.example
+cookies.txt
+*.har
+src/test/resources/fixtures/raw/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

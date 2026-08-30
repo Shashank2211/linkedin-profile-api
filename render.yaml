@@ -1,0 +1,23 @@
+# One-click deploy on Render. Fly.io and Railway need equivalent settings:
+# a Docker build, port 8080, /actuator/health as the probe, and these env vars.
+services:
+  - type: web
+    name: linkedin-profile-api
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /actuator/health
+    envVars:
+      # Set these in the Render dashboard, never here.
+      - key: LINKEDIN_LI_AT
+        sync: false
+      - key: LINKEDIN_JSESSIONID
+        sync: false
+      - key: API_KEYS
+        sync: false
+      - key: CACHE_FRESH_TTL
+        value: PT6H
+      - key: CACHE_STALE_TTL
+        value: PT24H
+      - key: RATE_LIMIT_RPM
+        value: "30"

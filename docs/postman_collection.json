@@ -1,0 +1,223 @@
+{
+  "info": {
+    "name": "LinkedIn Profile API",
+    "description": "Resolves a LinkedIn profile URL into a stable JSON contract.\n\nSet the `baseUrl` and `apiKey` collection variables, then run the folder top to bottom. The requests are ordered to demonstrate the contract, not just the happy path: a fresh fetch, a cache hit, and each distinct failure mode.\n\nRead `meta` before trusting a null. `null` means \"we could not read this\"; `[]` means \"there is none\"; `meta.completeness` tells you which situation you are in.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "description": "Replace with the deployed HTTPS URL."
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "description": "Any value from the server's API_KEYS list. Leave blank when the server runs unauthenticated."
+    },
+    {
+      "key": "profileUrl",
+      "value": "https://www.linkedin.com/in/williamhgates"
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator", "health"] },
+        "description": "Session availability, per-source breaker state, cache size and hit rate. No secrets. Check this first when responses look wrong."
+      }
+    },
+    {
+      "name": "Get profile",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('envelope carries provenance', () => {",
+              "  pm.expect(body.meta).to.have.property('source');",
+              "  pm.expect(body.meta).to.have.property('completeness');",
+              "  pm.expect(body.meta).to.have.property('cached');",
+              "});",
+              "pm.test('every contract key is present', () => {",
+              "  const p = body.profile;",
+              "  ['publicIdentifier','name','headline','about','location','profilePicture',",
+              "   'experience','education','skills','certifications','languages']",
+              "    .forEach(k => pm.expect(p).to.have.property(k));",
+              "});",
+              "console.log(`source=${body.meta.source} completeness=${body.meta.completeness} cached=${body.meta.cached}`);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url={{profileUrl}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "{{profileUrl}}" }]
+        },
+        "description": "The main call. First run should report `source: VOYAGER` and `cached: false`."
+      }
+    },
+    {
+      "name": "Get profile (cache hit)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.test('served from cache', () => {",
+              "  pm.expect(body.meta.cached).to.be.true;",
+              "  pm.expect(body.meta.source).to.eql('CACHE');",
+              "});",
+              "pm.test('reports a real age', () => pm.expect(body.meta.cacheAgeSeconds).to.be.at.least(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url={{profileUrl}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "{{profileUrl}}" }]
+        },
+        "description": "Same request again. LinkedIn is not touched — `source: CACHE`, `cached: true`, with a real `cacheAgeSeconds`."
+      }
+    },
+    {
+      "name": "Get profile (force refresh)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url={{profileUrl}}&refresh=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [
+            { "key": "url", "value": "{{profileUrl}}" },
+            { "key": "refresh", "value": "true" }
+          ]
+        },
+        "description": "Bypasses the freshness window. Spends LinkedIn rate budget — use sparingly."
+      }
+    },
+    {
+      "name": "URL variants all normalize to one identifier",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url=https://in.linkedin.com/in/williamhgates/?originalSubdomain=uk&trk=public_profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "https://in.linkedin.com/in/williamhgates/?originalSubdomain=uk&trk=public_profile" }]
+        },
+        "description": "Locale subdomain, trailing slash and tracking parameters. Reduced to the same public identifier, and only that identifier is ever used to build the outbound request."
+      }
+    },
+    {
+      "name": "400 — not a member profile URL",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('400', () => pm.response.to.have.status(400));",
+              "pm.test('named error code', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_PROFILE_URL'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url=https://www.linkedin.com/company/microsoft",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "https://www.linkedin.com/company/microsoft" }]
+        },
+        "description": "A company URL. The error message names the specific problem rather than saying 'invalid'."
+      }
+    },
+    {
+      "name": "400 — foreign host rejected (SSRF boundary)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url=http://169.254.169.254/latest/meta-data/",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "http://169.254.169.254/latest/meta-data/" }]
+        },
+        "description": "The caller-supplied URL never reaches an outbound request. Only a validated slug does, composed against a hardcoded host."
+      }
+    },
+    {
+      "name": "404 — no such member",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url=https://www.linkedin.com/in/this-identifier-does-not-exist-12345",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "https://www.linkedin.com/in/this-identifier-does-not-exist-12345" }]
+        },
+        "description": "Authoritative — a 404 stops the source chain rather than falling through."
+      }
+    },
+    {
+      "name": "401 — missing API key",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles?url={{profileUrl}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles"],
+          "query": [{ "key": "url", "value": "{{profileUrl}}" }]
+        },
+        "description": "Only meaningful when the server runs with API_KEYS set. If this returns 200 on your deployment, the key was never configured and the URL is open."
+      }
+    },
+    {
+      "name": "Evict a profile from the cache",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/williamhgates/cache",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "williamhgates", "cache"]
+        },
+        "description": "Data-deletion hook. Profile data is personal data; a named individual can be dropped without a redeploy. Returns 204 whether or not a copy was held."
+      }
+    },
+    {
+      "name": "OpenAPI document",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{baseUrl}}/v3/api-docs", "host": ["{{baseUrl}}"], "path": ["v3", "api-docs"] },
+        "description": "The full OpenAPI 3.1 spec. Swagger UI renders it at /docs."
+      }
+    }
+  ]
+}
