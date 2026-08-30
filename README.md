@@ -17,16 +17,18 @@ curl -s "https://linkedin-profile-api-xli4.onrender.com/api/v1/profiles?url=http
 
 Interactive docs (OpenAPI 3.1 + Swagger UI): **`https://linkedin-profile-api-xli4.onrender.com/docs`**
 
-> **Read this before you run that command.** As of the last check, LinkedIn is refusing both
-> acquisition paths and the profile endpoint returns `503 UPSTREAM_UNAVAILABLE` with the
-> failed attempts enumerated. That is the service reporting an upstream outage honestly
-> rather than inventing a profile. The evidence, and what it would take to restore access, is
-> in [Known limitations](#upstream-access-at-the-time-of-writing).
+> **Read this before you run that command.** Upstream access is intermittent. The URL above
+> is cached and should answer `200` with a real profile; a profile that is not cached may
+> return `503 UPSTREAM_UNAVAILABLE` with the failed attempts enumerated, which is the service
+> reporting an upstream refusal honestly rather than inventing data. Check `meta.source` and
+> `meta.cached` on any response. The measurements behind this are in
+> [Known limitations](#upstream-access-at-the-time-of-writing).
 >
-> Everything that does not depend on LinkedIn is live now: `/actuator/health`, `/docs`, the
-> auth and rate-limit layers, URL validation and the full error contract. And `mvn test` on a
-> clean clone exercises every parsing and mapping path against committed fixtures, with no
-> credentials and no network.
+> Everything that does not depend on LinkedIn is live regardless: `/actuator/health`, `/docs`,
+> the auth and rate-limit layers, URL validation and the full error contract. And `mvn test`
+> on a clean clone exercises every parsing and mapping path against committed fixtures, with
+> no credentials and no network — including `mvn test -Dtest=ContractExampleTest`, which
+> prints a complete response envelope.
 
 A Postman collection is at [`docs/postman_collection.json`](docs/postman_collection.json) —
 import it, set `baseUrl` and `apiKey`, and run the folder top to bottom. It walks a fresh
@@ -471,20 +473,30 @@ service.** I would not deploy it as one without a legal review and a licensed da
 
 ### Upstream access at the time of writing
 
-Stated first because it is what a reviewer hitting the live URL will see. **Both sources are
-currently refused by LinkedIn, and `GET /api/v1/profiles` returns `503 UPSTREAM_UNAVAILABLE`.**
-Everything else in this document is live and verifiable; this is not.
+Stated first because it is what a reviewer hitting the live URL will see. **Upstream access is
+intermittent.** Some profiles return `200` with a full payload; others return
+`503 UPSTREAM_UNAVAILABLE` with the failed attempts enumerated. Two requests minutes apart
+against the same deployment produced both outcomes: `williamhgates` returned a complete
+profile at `completeness: 0.9`, `satyanadella` returned `503`.
+
+This is worth stating precisely rather than rounding to "it works" or "it's blocked", because
+the intermittency *is* the finding. A cached profile therefore serves reliably for the
+configured TTL while an uncached one may not resolve at all — which is exactly the situation
+`meta.source`, `meta.cached` and `meta.stale` exist to make legible.
 
 What was measured, rather than assumed:
 
 - **The authenticated path is refused at the session layer.** Voyager answers `302` back to
   the *same* URL, with `Set-Cookie: li_at=delete me; Expires=Thu, 01-Jan-1970; Max-Age=0` —
   LinkedIn echoing the session token back with instructions to discard it. This repeats
-  across a bounded retry, and survives a freshly minted cookie from a full browser login.
-- **The anonymous path is refused at the network layer.** A logged-out `GET /in/{slug}`
-  returns `999` — LinkedIn's own bot-detection status — from a residential IP, and `301`
-  from the deployment's datacenter IP. Anonymous profile access is no longer generally
-  available to non-browser clients.
+  across a bounded retry, and survives a freshly minted cookie from a full browser login. No
+  observed request has succeeded on this path.
+- **The anonymous path is throttled, not closed.** A logged-out `GET /in/{slug}` returns
+  `999` — LinkedIn's own bot-detection status — from a residential IP, and `301` from the
+  deployment's datacenter IP, but intermittently succeeds. Every `200` observed from the
+  deployment came through this path, which is consistent with what it returns: name,
+  headline, location, industry, about, roles, schools and images, but no skills,
+  certifications or languages, because JSON-LD does not carry them.
 - **The web app has moved to `/voyager/api/graphql`.** Captured responses carry
   `meta.microSchema.isGraphQL: true` and nest their collection at
   `data.data.<queryName>."*elements"`. The REST-li endpoint this client calls is no longer
