@@ -6,6 +6,8 @@ fully testable without credentials.
 
 Built for the Tross engineering hiring challenge. Java 21 / Spring Boot 3.3.
 
+![Demo: Swagger UI, an authenticated profile fetch, URL validation, and the credential-free test suite](docs/demo.gif)
+
 ---
 
 ## Try it

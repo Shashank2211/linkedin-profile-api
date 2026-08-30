@@ -11,6 +11,12 @@ cookies.txt
 *.har
 src/test/resources/fixtures/raw/
 
+# Screen recordings - the committed demo is docs/demo.gif; raw video is far too
+# large for a repo and does not render inline on GitHub anyway.
+*.mp4
+*.mkv
+*.webm
+
 # IDE
 .idea/
 *.iml
