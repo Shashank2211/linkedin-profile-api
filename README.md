@@ -17,6 +17,17 @@ curl -s "https://linkedin-profile-api-xli4.onrender.com/api/v1/profiles?url=http
 
 Interactive docs (OpenAPI 3.1 + Swagger UI): **`https://linkedin-profile-api-xli4.onrender.com/docs`**
 
+> **Read this before you run that command.** As of the last check, LinkedIn is refusing both
+> acquisition paths and the profile endpoint returns `503 UPSTREAM_UNAVAILABLE` with the
+> failed attempts enumerated. That is the service reporting an upstream outage honestly
+> rather than inventing a profile. The evidence, and what it would take to restore access, is
+> in [Known limitations](#upstream-access-at-the-time-of-writing).
+>
+> Everything that does not depend on LinkedIn is live now: `/actuator/health`, `/docs`, the
+> auth and rate-limit layers, URL validation and the full error contract. And `mvn test` on a
+> clean clone exercises every parsing and mapping path against committed fixtures, with no
+> credentials and no network.
+
 A Postman collection is at [`docs/postman_collection.json`](docs/postman_collection.json) —
 import it, set `baseUrl` and `apiKey`, and run the folder top to bottom. It walks a fresh
 fetch, a cache hit, and each distinct failure mode, with assertions on the contract.
@@ -457,6 +468,41 @@ service.** I would not deploy it as one without a legal review and a licensed da
 ---
 
 ## Known limitations
+
+### Upstream access at the time of writing
+
+Stated first because it is what a reviewer hitting the live URL will see. **Both sources are
+currently refused by LinkedIn, and `GET /api/v1/profiles` returns `503 UPSTREAM_UNAVAILABLE`.**
+Everything else in this document is live and verifiable; this is not.
+
+What was measured, rather than assumed:
+
+- **The authenticated path is refused at the session layer.** Voyager answers `302` back to
+  the *same* URL, with `Set-Cookie: li_at=delete me; Expires=Thu, 01-Jan-1970; Max-Age=0` —
+  LinkedIn echoing the session token back with instructions to discard it. This repeats
+  across a bounded retry, and survives a freshly minted cookie from a full browser login.
+- **The anonymous path is refused at the network layer.** A logged-out `GET /in/{slug}`
+  returns `999` — LinkedIn's own bot-detection status — from a residential IP, and `301`
+  from the deployment's datacenter IP. Anonymous profile access is no longer generally
+  available to non-browser clients.
+- **The web app has moved to `/voyager/api/graphql`.** Captured responses carry
+  `meta.microSchema.isGraphQL: true` and nest their collection at
+  `data.data.<queryName>."*elements"`. The REST-li endpoint this client calls is no longer
+  the one the browser uses. `UrnGraph` understands both envelope shapes; the entity
+  projections inside them differ.
+
+This is the risk named in the Approach section arriving on schedule: an undocumented,
+actively defended dependency withdrawing access. The design response is the part worth
+judging — the chain degrades source by source, the failure is reported as `503` with the
+attempts enumerated rather than as a fabricated empty profile, and **every parsing and
+mapping path remains verifiable offline** via `mvn test` against committed fixtures.
+
+Making this work again is not a code change. It needs an acquisition path this project
+deliberately scoped out: a headless browser that presents a real browser fingerprint and can
+re-mint its own session, behind residential egress. `OUTBOUND_PROXY` is already wired for the
+second half of that.
+
+### Everything else
 
 - **Data depth depends on the viewing account.** 2nd- and 3rd-degree profiles return
   materially less than 1st-degree ones, so the same request from two different sessions
